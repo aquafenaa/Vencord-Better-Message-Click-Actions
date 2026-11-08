@@ -16,44 +16,55 @@ import { AuthenticationStore, FluxDispatcher, MessageTypeSets, PermissionsBits, 
 const MessageActions = findByPropsLazy("deleteMessage", "startEditMessage");
 const EditStore = findByPropsLazy("isEditing", "isEditingAny");
 
-let isEditPressed = false;
 let isReplyPressed = false;
+let isEditPressed = false;
 let isDeletePressed = false;
 
-let editModifierKey = "Shift";
 let replyModifierKey = "Control";
+let editModifierKey = "Shift";
 let deleteModifierKey = "Backspace";
 
 const keydown = (e: KeyboardEvent) => {
-    if(e.key === editModifierKey) isEditPressed = true;
     if(e.key === replyModifierKey) isReplyPressed = true;
+    if(e.key === editModifierKey) isEditPressed = true;
     if(e.key === deleteModifierKey) isDeletePressed = true;
 };
 
 const keyup = (e: KeyboardEvent) => {
-    if(e.key === editModifierKey) isEditPressed = false;
     if(e.key === replyModifierKey) isReplyPressed = false;
+    if(e.key === editModifierKey) isEditPressed = false;
     if(e.key === deleteModifierKey) isDeletePressed = false;
 };
 
-const focusChanged = () => !WindowStore.isFocused() && (isDeletePressed = false); // TODO ?
+const focusChanged = () => {
+    if (!WindowStore.isFocused()) {
+        isReplyPressed = false;
+        isEditPressed = false;
+        isDeletePressed = false;
+    }
+};
 
 const settings = definePluginSettings({
-    enableDeleteOnClick: {
+    enableDoubleClickToReply: {
         type: OptionType.BOOLEAN,
-        description: "Enable delete on click while holding backspace",
+        description: "Enable double click to reply",
         default: true
     },
-    deleteModifier: {
+    replyModifier: {
         type: OptionType.SELECT,
-        description: "What modifier you would like to use to delete messages?",
-        options: [
-            { label: "Backspace", value: "Backspace" }
+        description: "What modifier you would like to use to reply to messages?",
+         options: [
+            { label: "Backspace", value: "Backspace" },
+            { label: "Shift", value: "Shift" },
+            { label: "Control", value: "Control" },
+            { label: "Caps Lock", value: "CapsLock" },
+            { label: "Alt", value: "Alt" },
+            { label: "Fn", value: "Fn" },
         ],
-        onChange: newValue => deleteModifierKey = newValue,
-        default: deleteModifierKey,
+        onChange: newValue => replyModifierKey = newValue,
+        default: replyModifierKey,
     },
-    // add separator
+    // TODO: add separator
     enableDoubleClickToEdit: {
         type: OptionType.BOOLEAN,
         description: "Enable double click to edit",
@@ -63,25 +74,36 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: "What modifier you would like to use to edit your own message?",
         options: [
-            { label: "Shift", value: "Shift" }
+            { label: "Backspace", value: "Backspace" },
+            { label: "Shift", value: "Shift" },
+            { label: "Control", value: "Control" },
+            { label: "Caps Lock", value: "CapsLock" },
+            { label: "Alt", value: "Alt" },
+            { label: "Fn", value: "Fn" },
         ],
         onChange: newValue => editModifierKey = newValue,
         default: editModifierKey,
     },
-    enableDoubleClickToReply: {
+    // TODO: add separator
+    enableDeleteOnClick: {
         type: OptionType.BOOLEAN,
-        description: "Enable double click to reply",
+        description: "Enable delete on click while holding backspace",
         default: true
     },
-    replyModifier: {
+    deleteModifier: {
         type: OptionType.SELECT,
-        description: "What modifier you would like to use to reply to messages?",
+        description: "What modifier you would like to use to delete messages?",
         options: [
-            { label: "Control", value: "Control" }
+            { label: "Backspace", value: "Backspace" },
+            { label: "Shift", value: "Shift" },
+            { label: "Control", value: "Control" },
+            { label: "Caps Lock", value: "CapsLock" },
+            { label: "Alt", value: "Alt" },
+            { label: "Fn", value: "Fn" },
         ],
-        onChange: newValue => replyModifierKey = newValue,
-        default: replyModifierKey,
-    }
+        onChange: newValue => deleteModifierKey = newValue,
+        default: deleteModifierKey,
+    },
 });
 
 export default definePlugin({
@@ -117,7 +139,7 @@ export default definePlugin({
 
             if (!MessageTypeSets.REPLYABLE.has(msg.type) || msg.hasFlag(MessageFlags.EPHEMERAL)) return;
 
-            const isShiftPress = event.shiftKey;
+            const isShiftPress = event.shiftKey; // need shift specifically, as this is discord's default mention control
             const shouldMention = isPluginEnabled(NoReplyMentionPlugin.name)
                 ? NoReplyMentionPlugin.shouldMention(msg, isShiftPress)
                 : !isShiftPress;
