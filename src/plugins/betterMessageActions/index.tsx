@@ -140,7 +140,7 @@ export default definePlugin({
 
             return;
         }
-        if (isDeletePressed) {
+        if (isDeletePressed && settings.store.enableDeleteOnClick) {
             if (!isMe && !PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) && !isSelfInvokedUserApp) return;
 
             if (msg.deleted) {
