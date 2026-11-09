@@ -10,7 +10,7 @@ import { Divider } from "@components/Divider";
 import { Heading } from "@components/Heading";
 import NoReplyMentionPlugin from "@plugins/noReplyMention";
 import { Devs } from "@utils/constants";
-import definePlugin, { OptionType } from "@utils/types";
+import definePlugin, { makeRange, OptionType } from "@utils/types";
 import { ApplicationIntegrationType, MessageFlags } from "@vencord/discord-types/enums";
 import { findByPropsLazy } from "@webpack";
 import { AuthenticationStore, FluxDispatcher, MessageTypeSets, PermissionsBits, PermissionStore, WindowStore } from "@webpack/common";
@@ -22,20 +22,16 @@ let isReplyPressed = false;
 let isEditPressed = false;
 let isDeletePressed = false;
 
-let replyModifierKey = "Control";
-let editModifierKey = "Shift";
-let deleteModifierKey = "Backspace";
-
 const keydown = (e: KeyboardEvent) => {
-    if(e.key === replyModifierKey) isReplyPressed = true;
-    if(e.key === editModifierKey) isEditPressed = true;
-    if(e.key === deleteModifierKey) isDeletePressed = true;
+    if(e.key === settings.store.replyModifier) isReplyPressed = true;
+    if(e.key === settings.store.editModifier) isEditPressed = true;
+    if(e.key === settings.store.deleteModifier) isDeletePressed = true;
 };
 
 const keyup = (e: KeyboardEvent) => {
-    if(e.key === replyModifierKey) isReplyPressed = false;
-    if(e.key === editModifierKey) isEditPressed = false;
-    if(e.key === deleteModifierKey) isDeletePressed = false;
+    if(e.key === settings.store.replyModifier) isReplyPressed = false;
+    if(e.key === settings.store.editModifier) isEditPressed = false;
+    if(e.key === settings.store.deleteModifier) isDeletePressed = false;
 };
 
 const focusChanged = () => {
@@ -66,8 +62,13 @@ const settings = definePluginSettings({
             { label: "Caps Lock", value: "CapsLock" },
             { label: "Alt", value: "Alt" },
         ],
-        onChange: newValue => replyModifierKey = newValue,
-        default: replyModifierKey,
+        default: "Control",
+    },
+    replyClickSlider: {
+        type: OptionType.SLIDER,
+        description: "Number of clicks to trigger the reply feature.",
+        markers: makeRange(1, 5),
+        default: 2,
     },
     replyEditDivider: {
         type: OptionType.COMPONENT,
@@ -92,8 +93,13 @@ const settings = definePluginSettings({
             { label: "Caps Lock", value: "CapsLock" },
             { label: "Alt", value: "Alt" },
         ],
-        onChange: newValue => editModifierKey = newValue,
-        default: editModifierKey,
+        default: "Shift",
+    },
+    editClickSlider: {
+        type: OptionType.SLIDER,
+        description: "Number of clicks to trigger the edit feature.",
+        markers: makeRange(1, 5),
+        default: 2,
     },
     editDeleteDivider: {
         type: OptionType.COMPONENT,
@@ -118,13 +124,14 @@ const settings = definePluginSettings({
             { label: "Caps Lock", value: "CapsLock" },
             { label: "Alt", value: "Alt" },
         ],
-        onChange: newValue => deleteModifierKey = newValue,
-        default: deleteModifierKey,
+        default: "Backspace",
     },
-    endDivider: {
-        type: OptionType.COMPONENT,
-        component: () => <Divider />
-    },
+    deleteClickSlider: {
+        type: OptionType.SLIDER,
+        description: "Number of clicks to trigger the delete feature.",
+        markers: makeRange(1, 5),
+        default: 1,
+    }
 });
 
 export default definePlugin({
@@ -154,7 +161,7 @@ export default definePlugin({
         const numClicks = event.detail;
 
         // if shift is the edit key, then we wish to prioritize reply, so the user can still reply without mentioning
-        if (isReplyPressed && settings.store.enableDoubleClickToReply && numClicks < 2) {
+        if (isReplyPressed && settings.store.enableDoubleClickToReply && numClicks >= settings.store.replyClickSlider) {
             if (channel.guild_id && !PermissionStore.can(PermissionsBits.SEND_MESSAGES, channel)) return;
             if (msg.deleted === true) return;
 
@@ -175,7 +182,7 @@ export default definePlugin({
 
             return;
         }
-        if (isEditPressed && settings.store.enableDoubleClickToEdit && numClicks < 2) {
+        if (isEditPressed && settings.store.enableDoubleClickToEdit && numClicks >= settings.store.editClickSlider) {
             if (!isMe || EditStore.isEditing(channel.id, msg.id) || msg.state !== "SENT") return;
 
             MessageActions.startEditMessage(channel.id, msg.id, msg.content);
@@ -183,7 +190,7 @@ export default definePlugin({
 
             return;
         }
-        if (isDeletePressed && settings.store.enableDeleteOnClick) {
+        if (isDeletePressed && settings.store.enableDeleteOnClick && numClicks >= settings.store.deleteClickSlider) {
             if (!isMe && !PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) && !isSelfInvokedUserApp) return;
 
             if (msg.deleted) {
