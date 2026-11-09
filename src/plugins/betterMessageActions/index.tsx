@@ -6,6 +6,8 @@
 
 import { isPluginEnabled } from "@api/PluginManager";
 import { definePluginSettings } from "@api/Settings";
+import { Divider } from "@components/Divider";
+import { Heading } from "@components/Heading";
 import NoReplyMentionPlugin from "@plugins/noReplyMention";
 import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
@@ -45,6 +47,10 @@ const focusChanged = () => {
 };
 
 const settings = definePluginSettings({
+    replyHeader: {
+        type: OptionType.COMPONENT,
+        component: () => <Heading tag="h3">Reply Settings</Heading>
+    },
     enableDoubleClickToReply: {
         type: OptionType.BOOLEAN,
         description: "Enable double click to reply",
@@ -52,19 +58,25 @@ const settings = definePluginSettings({
     },
     replyModifier: {
         type: OptionType.SELECT,
-        description: "What modifier you would like to use to reply to messages?",
+        description: "What modifier you would like to use to reply to messages",
          options: [
             { label: "Backspace", value: "Backspace" },
             { label: "Shift", value: "Shift" },
             { label: "Control", value: "Control" },
             { label: "Caps Lock", value: "CapsLock" },
             { label: "Alt", value: "Alt" },
-            { label: "Fn", value: "Fn" },
         ],
         onChange: newValue => replyModifierKey = newValue,
         default: replyModifierKey,
     },
-    // TODO: add separator
+    replyEditDivider: {
+        type: OptionType.COMPONENT,
+        component: () => <Divider />
+    },
+    editHeader: {
+        type: OptionType.COMPONENT,
+        component: () => <Heading tag="h3">Edit Settings</Heading>
+    },
     enableDoubleClickToEdit: {
         type: OptionType.BOOLEAN,
         description: "Enable double click to edit",
@@ -72,19 +84,25 @@ const settings = definePluginSettings({
     },
     editModifier: {
         type: OptionType.SELECT,
-        description: "What modifier you would like to use to edit your own message?",
+        description: "What modifier you would like to use to edit your own message",
         options: [
             { label: "Backspace", value: "Backspace" },
             { label: "Shift", value: "Shift" },
             { label: "Control", value: "Control" },
             { label: "Caps Lock", value: "CapsLock" },
             { label: "Alt", value: "Alt" },
-            { label: "Fn", value: "Fn" },
         ],
         onChange: newValue => editModifierKey = newValue,
         default: editModifierKey,
     },
-    // TODO: add separator
+    editDeleteDivider: {
+        type: OptionType.COMPONENT,
+        component: () => <Divider />
+    },
+    deleteHeader: {
+        type: OptionType.COMPONENT,
+        component: () => <Heading tag="h3">Delete Settings</Heading>
+    },
     enableDeleteOnClick: {
         type: OptionType.BOOLEAN,
         description: "Enable delete on click while holding backspace",
@@ -92,17 +110,20 @@ const settings = definePluginSettings({
     },
     deleteModifier: {
         type: OptionType.SELECT,
-        description: "What modifier you would like to use to delete messages?",
+        description: "What modifier you would like to use to delete messages",
         options: [
             { label: "Backspace", value: "Backspace" },
             { label: "Shift", value: "Shift" },
             { label: "Control", value: "Control" },
             { label: "Caps Lock", value: "CapsLock" },
             { label: "Alt", value: "Alt" },
-            { label: "Fn", value: "Fn" },
         ],
         onChange: newValue => deleteModifierKey = newValue,
         default: deleteModifierKey,
+    },
+    endDivider: {
+        type: OptionType.COMPONENT,
+        component: () => <Divider />
     },
 });
 
@@ -117,7 +138,6 @@ export default definePlugin({
     start() {
         document.addEventListener("keydown", keydown);
         document.addEventListener("keyup", keyup);
-
         WindowStore.addChangeListener(focusChanged);
     },
 
@@ -132,8 +152,9 @@ export default definePlugin({
         const isMe = msg.author.id === myId;
         const isSelfInvokedUserApp = msg.interactionMetadata?.authorizing_integration_owners[ApplicationIntegrationType.USER_INSTALL] === myId;
         const numClicks = event.detail;
-        if (isReplyPressed && settings.store.enableDoubleClickToReply) {
-            if (numClicks < 2) return;
+
+        // if shift is the edit key, then we wish to prioritize reply, so the user can still reply without mentioning
+        if (isReplyPressed && settings.store.enableDoubleClickToReply && numClicks < 2) {
             if (channel.guild_id && !PermissionStore.can(PermissionsBits.SEND_MESSAGES, channel)) return;
             if (msg.deleted === true) return;
 
@@ -154,8 +175,8 @@ export default definePlugin({
 
             return;
         }
-        if (isEditPressed && settings.store.enableDoubleClickToEdit) {
-            if (numClicks < 2 || !isMe || EditStore.isEditing(channel.id, msg.id) || msg.state !== "SENT") return;
+        if (isEditPressed && settings.store.enableDoubleClickToEdit && numClicks < 2) {
+            if (!isMe || EditStore.isEditing(channel.id, msg.id) || msg.state !== "SENT") return;
 
             MessageActions.startEditMessage(channel.id, msg.id, msg.content);
             event.preventDefault();
