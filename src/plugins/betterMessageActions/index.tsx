@@ -11,6 +11,7 @@ import { Heading } from "@components/Heading";
 import NoReplyMentionPlugin from "@plugins/noReplyMention";
 import { Devs } from "@utils/constants";
 import definePlugin, { makeRange, OptionType } from "@utils/types";
+import { Channel, Message } from "@vencord/discord-types";
 import { ApplicationIntegrationType, MessageFlags } from "@vencord/discord-types/enums";
 import { findByPropsLazy } from "@webpack";
 import { AuthenticationStore, FluxDispatcher, MessageTypeSets, PermissionsBits, PermissionStore, WindowStore } from "@webpack/common";
@@ -23,15 +24,15 @@ let isEditPressed = false;
 let isDeletePressed = false;
 
 const keydown = (e: KeyboardEvent) => {
-    if(e.key === settings.store.replyModifier) isReplyPressed = true;
-    if(e.key === settings.store.editModifier) isEditPressed = true;
-    if(e.key === settings.store.deleteModifier) isDeletePressed = true;
+    if (e.key === settings.store.replyModifier) isReplyPressed = true;
+    if (e.key === settings.store.editModifier) isEditPressed = true;
+    if (e.key === settings.store.deleteModifier) isDeletePressed = true;
 };
 
 const keyup = (e: KeyboardEvent) => {
-    if(e.key === settings.store.replyModifier) isReplyPressed = false;
-    if(e.key === settings.store.editModifier) isEditPressed = false;
-    if(e.key === settings.store.deleteModifier) isDeletePressed = false;
+    if (e.key === settings.store.replyModifier) isReplyPressed = false;
+    if (e.key === settings.store.editModifier) isEditPressed = false;
+    if (e.key === settings.store.deleteModifier) isDeletePressed = false;
 };
 
 const focusChanged = () => {
@@ -41,6 +42,15 @@ const focusChanged = () => {
         isDeletePressed = false;
     }
 };
+
+const modifierOptions = [
+    { label: "Backspace", value: "Backspace" },
+    { label: "Shift", value: "Shift" },
+    { label: "Control", value: "Control" },
+    { label: "Caps Lock", value: "CapsLock" },
+    { label: "Alt", value: "Alt" },
+    { label: "None", value: "None" }
+];
 
 const settings = definePluginSettings({
     replyHeader: {
@@ -55,16 +65,10 @@ const settings = definePluginSettings({
     replyModifier: {
         type: OptionType.SELECT,
         description: "What modifier you would like to use to reply to messages",
-         options: [
-            { label: "Backspace", value: "Backspace" },
-            { label: "Shift", value: "Shift" },
-            { label: "Control", value: "Control" },
-            { label: "Caps Lock", value: "CapsLock" },
-            { label: "Alt", value: "Alt" },
-        ],
+         options: modifierOptions,
         default: "Control",
     },
-    replyClickSlider: {
+    replyClickCount: {
         type: OptionType.SLIDER,
         description: "Number of clicks to trigger the reply feature.",
         markers: makeRange(1, 5),
@@ -86,16 +90,10 @@ const settings = definePluginSettings({
     editModifier: {
         type: OptionType.SELECT,
         description: "What modifier you would like to use to edit your own message",
-        options: [
-            { label: "Backspace", value: "Backspace" },
-            { label: "Shift", value: "Shift" },
-            { label: "Control", value: "Control" },
-            { label: "Caps Lock", value: "CapsLock" },
-            { label: "Alt", value: "Alt" },
-        ],
+        options: modifierOptions,
         default: "Shift",
     },
-    editClickSlider: {
+    editClickCount: {
         type: OptionType.SLIDER,
         description: "Number of clicks to trigger the edit feature.",
         markers: makeRange(1, 5),
@@ -111,22 +109,16 @@ const settings = definePluginSettings({
     },
     enableDeleteOnClick: {
         type: OptionType.BOOLEAN,
-        description: "Enable delete on click while holding backspace",
+        description: "Enable delete on click",
         default: true
     },
     deleteModifier: {
         type: OptionType.SELECT,
         description: "What modifier you would like to use to delete messages",
-        options: [
-            { label: "Backspace", value: "Backspace" },
-            { label: "Shift", value: "Shift" },
-            { label: "Control", value: "Control" },
-            { label: "Caps Lock", value: "CapsLock" },
-            { label: "Alt", value: "Alt" },
-        ],
+        options: modifierOptions,
         default: "Backspace",
     },
-    deleteClickSlider: {
+    deleteClickCount: {
         type: OptionType.SLIDER,
         description: "Number of clicks to trigger the delete feature.",
         markers: makeRange(1, 5),
@@ -134,9 +126,61 @@ const settings = definePluginSettings({
     }
 });
 
+const shouldReply = (msg: Message, channel: Channel) => { // to note: msg.deleted's lazy boolean checking if undefined, if any bugs
+    return (isReplyPressed || settings.store.replyModifier === "None") // if the modifier is being pressed
+        && settings.store.enableDoubleClickToReply // is enabled
+        && !msg.deleted // isn't deleted
+        && (MessageTypeSets.REPLYABLE.has(msg.type) && !msg.hasFlag(MessageFlags.EPHEMERAL)) // message is replyable
+        && (!channel.guild_id || PermissionStore.can(PermissionsBits.SEND_MESSAGES, channel)); // user has permissions to reply
+};
+const shouldEdit = (msg: Message, channel: Channel, isMe: boolean) => {
+    return (isEditPressed || settings.store.editModifier === "None") // if the modifier is being pressed
+    && settings.store.enableDoubleClickToEdit // is enabled
+    && (isMe && !EditStore.isEditing(channel.id, msg.id) && msg.state === "SENT"); // can edit
+};
+const shouldDelete = (msg: Message, channel: Channel, isMe: boolean, isSelfInvokedUserApp: boolean) => {
+    return (isDeletePressed || settings.store.deleteModifier === "None") // if the modifier is being pressed
+    && settings.store.enableDeleteOnClick // is enabled
+    && (isMe || PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) || isSelfInvokedUserApp); // should be able to delete
+};
+
+const replyToMessage = (msg: Message, channel: Channel, event: MouseEvent) => {
+    const isShiftPress = event.shiftKey && settings.store.replyModifier !== "SHIFT"; // need shift specifically, as this is discord's default mention control
+    const shouldMention = isPluginEnabled(NoReplyMentionPlugin.name)
+        ? NoReplyMentionPlugin.shouldMention(msg, isShiftPress)
+        : !isShiftPress;
+
+    FluxDispatcher.dispatch({
+        type: "CREATE_PENDING_REPLY",
+        channel,
+        message: msg,
+        shouldMention,
+        showMentionToggle: channel.guild_id !== null
+    });
+};
+
+const editMessage = (isMe: boolean, msg: Message, channel: Channel, event: MouseEvent) => {
+    MessageActions.startEditMessage(channel.id, msg.id, msg.content);
+    event.preventDefault();
+};
+
+const deleteMessage = (isMe: boolean, msg: Message, channel: Channel, event: MouseEvent, isSelfInvokedUserApp: boolean) => {
+    if (msg.deleted) {
+        FluxDispatcher.dispatch({
+            type: "MESSAGE_DELETE",
+            channelId: channel.id,
+            id: msg.id,
+            mlDeleted: true
+        });
+    } else {
+        MessageActions.deleteMessage(channel.id, msg.id);
+    }
+    event.preventDefault();
+};
+
 export default definePlugin({
     name: "BetterMessageActions",
-    description: "A fork of MessageClickActions that allows the user to choose a specific modifier for each feature",
+    description: "A fork of MessageClickActions that allows the user to choose a specific modifier for each feature. A user may click to edit their own message, reply to another message, or delete a message. The user may also choose a variety of modifiers to use.",
     tags: ["Chat", "Shortcuts"],
     authors: [Devs.Ven, Devs.aquafenaa],
 
@@ -160,50 +204,16 @@ export default definePlugin({
         const isSelfInvokedUserApp = msg.interactionMetadata?.authorizing_integration_owners[ApplicationIntegrationType.USER_INSTALL] === myId;
         const numClicks = event.detail;
 
-        // if shift is the edit key, then we wish to prioritize reply, so the user can still reply without mentioning
-        if (isReplyPressed && settings.store.enableDoubleClickToReply && numClicks >= settings.store.replyClickSlider) {
-            if (channel.guild_id && !PermissionStore.can(PermissionsBits.SEND_MESSAGES, channel)) return;
-            if (msg.deleted === true) return;
-
-            if (!MessageTypeSets.REPLYABLE.has(msg.type) || msg.hasFlag(MessageFlags.EPHEMERAL)) return;
-
-            const isShiftPress = event.shiftKey; // need shift specifically, as this is discord's default mention control
-            const shouldMention = isPluginEnabled(NoReplyMentionPlugin.name)
-                ? NoReplyMentionPlugin.shouldMention(msg, isShiftPress)
-                : !isShiftPress;
-
-            FluxDispatcher.dispatch({
-                type: "CREATE_PENDING_REPLY",
-                channel,
-                message: msg,
-                shouldMention,
-                showMentionToggle: channel.guild_id !== null
-            });
-
+        if (shouldReply(msg, channel) && numClicks === settings.store.replyClickCount) {
+            replyToMessage(msg, channel, event);
             return;
         }
-        if (isEditPressed && settings.store.enableDoubleClickToEdit && numClicks >= settings.store.editClickSlider) {
-            if (!isMe || EditStore.isEditing(channel.id, msg.id) || msg.state !== "SENT") return;
-
-            MessageActions.startEditMessage(channel.id, msg.id, msg.content);
-            event.preventDefault();
-
+        if (shouldEdit(msg, channel, isMe) && numClicks === settings.store.editClickCount) {
+            editMessage(isMe, msg, channel, event);
             return;
         }
-        if (isDeletePressed && settings.store.enableDeleteOnClick && numClicks >= settings.store.deleteClickSlider) {
-            if (!isMe && !PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) && !isSelfInvokedUserApp) return;
-
-            if (msg.deleted) {
-                FluxDispatcher.dispatch({
-                    type: "MESSAGE_DELETE",
-                    channelId: channel.id,
-                    id: msg.id,
-                    mlDeleted: true
-                });
-            } else {
-                MessageActions.deleteMessage(channel.id, msg.id);
-            }
-            event.preventDefault();
+        if (shouldDelete(msg, channel, isMe, isSelfInvokedUserApp) && numClicks === settings.store.deleteClickCount) {
+            deleteMessage(isMe, msg, channel, event, isSelfInvokedUserApp);
         }
     },
 });
