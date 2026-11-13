@@ -52,6 +52,13 @@ const modifierOptions = [
 ];
 
 const settings = definePluginSettings({
+    actionDelay: {
+        type: OptionType.SLIDER,
+        description: "Time it takes after the last click to perform the action (in ms)",
+        markers: makeRange(50, 1050, 100),
+        stickToMarkers: false,
+        default: 150,
+    },
     replyHeader: {
         type: OptionType.COMPONENT,
         component: () => <Heading tag="h3">Reply Settings</Heading>
@@ -64,7 +71,7 @@ const settings = definePluginSettings({
     replyModifier: {
         type: OptionType.SELECT,
         description: "What modifier you would like to use to reply to messages",
-         options: modifierOptions,
+        options: modifierOptions,
         default: "Control",
     },
     replyClickCount: {
@@ -225,7 +232,7 @@ export default definePlugin({
         const replyPressedSnapshot = isReplyPressed;
         const editPressedSnapshot = isEditPressed;
         const deletePressedSnapshot = isDeletePressed;
-        clickTimeout = setTimeout(performActions, 150, msg, channel, event, isMe, isSelfInvokedUserApp,
+        clickTimeout = setTimeout(performActions, settings.store.actionDelay, msg, channel, event, isMe, isSelfInvokedUserApp,
             replyPressedSnapshot, editPressedSnapshot, deletePressedSnapshot);
     },
 });
