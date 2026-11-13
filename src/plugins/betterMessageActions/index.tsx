@@ -187,15 +187,18 @@ const deleteMessage = (isMe: boolean, msg: Message, channel: Channel, event: Mou
 const performActions = (msg: Message, channel: Channel, event: MouseEvent, isMe: boolean, isSelfInvokedUserApp: boolean, replyPressedSnapshot: boolean, editPressedSnapshot: boolean, deletePressedSnapshot: boolean) => {
     const numClicks = event.detail;
 
-    if (shouldReply(replyPressedSnapshot, msg, channel) && numClicks === settings.store.replyClickCount) {
+    // if edit's modifier is shift, but we're fit to reply, we should prioritize replying, since Shift is discord's built-in "don't mention" button
+    if (settings.store.editModifier === "Shift" && shouldReply(replyPressedSnapshot, msg, channel) && numClicks === settings.store.replyClickCount) {
         replyToMessage(msg, channel, event);
-        return;
     }
-    if (shouldEdit(editPressedSnapshot, msg, channel, isMe) && numClicks === settings.store.editClickCount) {
+    // else, we should prioritize editing our own message
+    else if (shouldEdit(editPressedSnapshot, msg, channel, isMe) && numClicks === settings.store.editClickCount) {
         editMessage(isMe, msg, channel, event);
-        return;
     }
-    if (shouldDelete(deletePressedSnapshot, msg, channel, isMe, isSelfInvokedUserApp) && numClicks === settings.store.deleteClickCount) {
+    else if (shouldReply(replyPressedSnapshot, msg, channel) && numClicks === settings.store.replyClickCount) {
+        replyToMessage(msg, channel, event);
+    }
+    else if (shouldDelete(deletePressedSnapshot, msg, channel, isMe, isSelfInvokedUserApp) && numClicks === settings.store.deleteClickCount) {
         deleteMessage(isMe, msg, channel, event, isSelfInvokedUserApp);
     }
 };
