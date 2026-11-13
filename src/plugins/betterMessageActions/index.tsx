@@ -43,12 +43,12 @@ const focusChanged = () => {
 };
 
 const modifierOptions = [
-    { label: "Backspace", value: "Backspace" },
+    { label: "None", value: "None" },
     { label: "Shift", value: "Shift" },
     { label: "Control", value: "Control" },
+    { label: "Backspace", value: "Backspace" },
     { label: "Caps Lock", value: "CapsLock" },
     { label: "Alt", value: "Alt" },
-    { label: "None", value: "None" }
 ];
 
 const settings = definePluginSettings({
@@ -56,9 +56,9 @@ const settings = definePluginSettings({
         type: OptionType.COMPONENT,
         component: () => <Heading tag="h3">Reply Settings</Heading>
     },
-    enableDoubleClickToReply: {
+    enableReplyAction: {
         type: OptionType.BOOLEAN,
-        description: "Enable double click to reply",
+        description: "Enable click to reply.",
         default: true
     },
     replyModifier: {
@@ -81,9 +81,9 @@ const settings = definePluginSettings({
         type: OptionType.COMPONENT,
         component: () => <Heading tag="h3">Edit Settings</Heading>
     },
-    enableDoubleClickToEdit: {
+    enableEditAction: {
         type: OptionType.BOOLEAN,
-        description: "Enable double click to edit",
+        description: "Enable click to edit.",
         default: true
     },
     editModifier: {
@@ -106,9 +106,9 @@ const settings = definePluginSettings({
         type: OptionType.COMPONENT,
         component: () => <Heading tag="h3">Delete Settings</Heading>
     },
-    enableDeleteOnClick: {
+    enableDeleteAction: {
         type: OptionType.BOOLEAN,
-        description: "Enable delete on click",
+        description: "Enable click to delete.",
         default: true
     },
     deleteModifier: {
@@ -127,19 +127,19 @@ const settings = definePluginSettings({
 
 const shouldReply = (editPressedSnapshot: boolean, msg: Message, channel: Channel) => {
     return (editPressedSnapshot || settings.store.replyModifier === "None") // if the modifier is being pressed
-        && settings.store.enableDoubleClickToReply // is enabled
+        && settings.store.enableReplyAction // is enabled
         && !msg?.deleted // isn't deleted
         && (MessageTypeSets.REPLYABLE.has(msg.type) && !msg.hasFlag(MessageFlags.EPHEMERAL)) // message is replyable
         && (!channel.guild_id || PermissionStore.can(PermissionsBits.SEND_MESSAGES, channel)); // user has permissions to reply
 };
 const shouldEdit = (editPressedSnapshot: boolean, msg: Message, channel: Channel, isMe: boolean) => {
     return (editPressedSnapshot || settings.store.editModifier === "None") // if the modifier is being pressed
-        && settings.store.enableDoubleClickToEdit // is enabled
+        && settings.store.enableEditAction // is enabled
         && (isMe && !EditStore.isEditing(channel.id, msg.id) && msg.state === "SENT"); // can edit
 };
 const shouldDelete = (deletePressedSnapshot: boolean, msg: Message, channel: Channel, isMe: boolean, isSelfInvokedUserApp: boolean) => {
     return (deletePressedSnapshot || settings.store.deleteModifier === "None") // if the modifier is being pressed
-        && settings.store.enableDeleteOnClick // is enabled
+        && settings.store.enableDeleteAction // is enabled
         && (isMe || PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) || isSelfInvokedUserApp); // should be able to delete
 };
 
