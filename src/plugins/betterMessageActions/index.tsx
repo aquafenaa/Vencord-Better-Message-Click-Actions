@@ -144,7 +144,7 @@ const shouldEdit = (editPressedSnapshot: boolean, msg: Message, channel: Channel
         && settings.store.enableEditAction // is enabled
         && (isMe && !EditStore.isEditing(channel.id, msg.id) && msg.state === "SENT"); // can edit
 };
-const shouldDelete = (deletePressedSnapshot: boolean, msg: Message, channel: Channel, isMe: boolean, isSelfInvokedUserApp: boolean) => {
+const shouldDelete = (deletePressedSnapshot: boolean, _: Message, channel: Channel, isMe: boolean, isSelfInvokedUserApp: boolean) => {
     return (deletePressedSnapshot || settings.store.deleteModifier === "None") // if the modifier is being pressed
         && settings.store.enableDeleteAction // is enabled
         && (isMe || PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) || isSelfInvokedUserApp); // should be able to delete
@@ -165,12 +165,12 @@ const replyToMessage = (msg: Message, channel: Channel, event: MouseEvent) => {
     });
 };
 
-const editMessage = (isMe: boolean, msg: Message, channel: Channel, event: MouseEvent) => {
+const editMessage = (msg: Message, channel: Channel, event: MouseEvent) => {
     MessageActions.startEditMessage(channel.id, msg.id, msg.content);
     event.preventDefault();
 };
 
-const deleteMessage = (isMe: boolean, msg: Message, channel: Channel, event: MouseEvent, isSelfInvokedUserApp: boolean) => {
+const deleteMessage = (msg: Message, channel: Channel, event: MouseEvent) => {
     if (msg.deleted) {
         FluxDispatcher.dispatch({
             type: "MESSAGE_DELETE",
@@ -193,13 +193,13 @@ const performActions = (msg: Message, channel: Channel, event: MouseEvent, isMe:
     }
     // else, we should prioritize editing our own message
     else if (shouldEdit(editPressedSnapshot, msg, channel, isMe) && numClicks === settings.store.editClickCount) {
-        editMessage(isMe, msg, channel, event);
+        editMessage(msg, channel, event);
     }
     else if (shouldReply(replyPressedSnapshot, msg, channel) && numClicks === settings.store.replyClickCount) {
         replyToMessage(msg, channel, event);
     }
     else if (shouldDelete(deletePressedSnapshot, msg, channel, isMe, isSelfInvokedUserApp) && numClicks === settings.store.deleteClickCount) {
-        deleteMessage(isMe, msg, channel, event, isSelfInvokedUserApp);
+        deleteMessage(msg, channel, event);
     }
 };
 
@@ -235,7 +235,7 @@ export default definePlugin({
         const replyPressedSnapshot = isReplyPressed;
         const editPressedSnapshot = isEditPressed;
         const deletePressedSnapshot = isDeletePressed;
-        clickTimeout = setTimeout(performActions, settings.store.actionDelay, msg, channel, event, isMe, isSelfInvokedUserApp,
-            replyPressedSnapshot, editPressedSnapshot, deletePressedSnapshot);
+        clickTimeout = setTimeout(performActions, settings.store.actionDelay,
+            msg, channel, event, isMe, isSelfInvokedUserApp, replyPressedSnapshot, editPressedSnapshot, deletePressedSnapshot);
     },
 });
