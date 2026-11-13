@@ -22,19 +22,18 @@ const EditStore = findByPropsLazy("isEditing", "isEditingAny");
 let isReplyPressed = false;
 let isEditPressed = false;
 let isDeletePressed = false;
+let clickTimeout;
 
 const keydown = (e: KeyboardEvent) => {
     if (e.key === settings.store.replyModifier) isReplyPressed = true;
     if (e.key === settings.store.editModifier) isEditPressed = true;
     if (e.key === settings.store.deleteModifier) isDeletePressed = true;
 };
-
 const keyup = (e: KeyboardEvent) => {
     if (e.key === settings.store.replyModifier) isReplyPressed = false;
     if (e.key === settings.store.editModifier) isEditPressed = false;
     if (e.key === settings.store.deleteModifier) isDeletePressed = false;
 };
-
 const focusChanged = () => {
     if (!WindowStore.isFocused()) {
         isReplyPressed = false;
@@ -126,22 +125,22 @@ const settings = definePluginSettings({
     }
 });
 
-const shouldReply = (msg: Message, channel: Channel) => { // to note: msg.deleted's lazy boolean checking if undefined, if any bugs
-    return (isReplyPressed || settings.store.replyModifier === "None") // if the modifier is being pressed
+const shouldReply = (editPressedSnapshot: boolean, msg: Message, channel: Channel) => {
+    return (editPressedSnapshot || settings.store.replyModifier === "None") // if the modifier is being pressed
         && settings.store.enableDoubleClickToReply // is enabled
-        && !msg.deleted // isn't deleted
+        && !msg?.deleted // isn't deleted
         && (MessageTypeSets.REPLYABLE.has(msg.type) && !msg.hasFlag(MessageFlags.EPHEMERAL)) // message is replyable
         && (!channel.guild_id || PermissionStore.can(PermissionsBits.SEND_MESSAGES, channel)); // user has permissions to reply
 };
-const shouldEdit = (msg: Message, channel: Channel, isMe: boolean) => {
-    return (isEditPressed || settings.store.editModifier === "None") // if the modifier is being pressed
-    && settings.store.enableDoubleClickToEdit // is enabled
-    && (isMe && !EditStore.isEditing(channel.id, msg.id) && msg.state === "SENT"); // can edit
+const shouldEdit = (editPressedSnapshot: boolean, msg: Message, channel: Channel, isMe: boolean) => {
+    return (editPressedSnapshot || settings.store.editModifier === "None") // if the modifier is being pressed
+        && settings.store.enableDoubleClickToEdit // is enabled
+        && (isMe && !EditStore.isEditing(channel.id, msg.id) && msg.state === "SENT"); // can edit
 };
-const shouldDelete = (msg: Message, channel: Channel, isMe: boolean, isSelfInvokedUserApp: boolean) => {
-    return (isDeletePressed || settings.store.deleteModifier === "None") // if the modifier is being pressed
-    && settings.store.enableDeleteOnClick // is enabled
-    && (isMe || PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) || isSelfInvokedUserApp); // should be able to delete
+const shouldDelete = (deletePressedSnapshot: boolean, msg: Message, channel: Channel, isMe: boolean, isSelfInvokedUserApp: boolean) => {
+    return (deletePressedSnapshot || settings.store.deleteModifier === "None") // if the modifier is being pressed
+        && settings.store.enableDeleteOnClick // is enabled
+        && (isMe || PermissionStore.can(PermissionsBits.MANAGE_MESSAGES, channel) || isSelfInvokedUserApp); // should be able to delete
 };
 
 const replyToMessage = (msg: Message, channel: Channel, event: MouseEvent) => {
@@ -178,6 +177,22 @@ const deleteMessage = (isMe: boolean, msg: Message, channel: Channel, event: Mou
     event.preventDefault();
 };
 
+const performActions = (msg: Message, channel: Channel, event: MouseEvent, isMe: boolean, isSelfInvokedUserApp: boolean, replyPressedSnapshot: boolean, editPressedSnapshot: boolean, deletePressedSnapshot: boolean) => {
+    const numClicks = event.detail;
+
+    if (shouldReply(replyPressedSnapshot, msg, channel) && numClicks === settings.store.replyClickCount) {
+        replyToMessage(msg, channel, event);
+        return;
+    }
+    if (shouldEdit(editPressedSnapshot, msg, channel, isMe) && numClicks === settings.store.editClickCount) {
+        editMessage(isMe, msg, channel, event);
+        return;
+    }
+    if (shouldDelete(deletePressedSnapshot, msg, channel, isMe, isSelfInvokedUserApp) && numClicks === settings.store.deleteClickCount) {
+        deleteMessage(isMe, msg, channel, event, isSelfInvokedUserApp);
+    }
+};
+
 export default definePlugin({
     name: "BetterMessageActions",
     description: "A fork of MessageClickActions that allows the user to choose a specific modifier for each feature. A user may click to edit their own message, reply to another message, or delete a message. The user may also choose a variety of modifiers to use.",
@@ -196,24 +211,21 @@ export default definePlugin({
         document.removeEventListener("keydown", keydown);
         document.removeEventListener("keyup", keyup);
         WindowStore.removeChangeListener(focusChanged);
+        clearTimeout(clickTimeout);
     },
 
     onMessageClick(msg, channel, event) {
         const myId = AuthenticationStore.getId();
         const isMe = msg.author.id === myId;
         const isSelfInvokedUserApp = msg.interactionMetadata?.authorizing_integration_owners[ApplicationIntegrationType.USER_INSTALL] === myId;
-        const numClicks = event.detail;
 
-        if (shouldReply(msg, channel) && numClicks === settings.store.replyClickCount) {
-            replyToMessage(msg, channel, event);
-            return;
-        }
-        if (shouldEdit(msg, channel, isMe) && numClicks === settings.store.editClickCount) {
-            editMessage(isMe, msg, channel, event);
-            return;
-        }
-        if (shouldDelete(msg, channel, isMe, isSelfInvokedUserApp) && numClicks === settings.store.deleteClickCount) {
-            deleteMessage(isMe, msg, channel, event, isSelfInvokedUserApp);
-        }
+        clearTimeout(clickTimeout);
+
+        // we take snapshots of all pressed booleans, since we care if they were pressed during the action, not during the execution
+        const replyPressedSnapshot = isReplyPressed;
+        const editPressedSnapshot = isEditPressed;
+        const deletePressedSnapshot = isDeletePressed;
+        clickTimeout = setTimeout(performActions, 150, msg, channel, event, isMe, isSelfInvokedUserApp,
+            replyPressedSnapshot, editPressedSnapshot, deletePressedSnapshot);
     },
 });
